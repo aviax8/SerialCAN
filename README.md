@@ -2,10 +2,10 @@
 
 _Copyright &copy; 2016,2020-2024 Uwe Vogt, UV Software, Berlin (info@uv-software.com)_
 
-![macOS Build](https://github.com/mac-can/SerialCAN/actions/workflows/macOS-build.yml/badge.svg)
-![MSBuild x64](https://github.com/mac-can/SerialCAN/actions/workflows/msbuild-x64.yml/badge.svg)
+![macOS Build](https://github.com/peclik/SerialCAN/actions/workflows/macOS-build.yml/badge.svg)
+![MSBuild x64](https://github.com/peclik/SerialCAN/actions/workflows/msbuild-x64.yml/badge.svg)
 
-# CAN API V3 Library for CAN-over-Serial-Line Interfaces
+# CAN API V3 Library and ControlCAN.dll API wrapper for CAN-over-Serial-Line Interfaces
 
 CAN API V3 is a wrapper specification to have a uniform CAN Interface API for various CAN interfaces from different vendors running under multiple operating systems.
 
@@ -104,6 +104,12 @@ See header file `SerialCAN.h` for a description of all class members.
 
 ___libUVCANSLC___ is a dynamic library with a CAN API V3 compatible application programming interface for use in __C__ applications.
 See header file `can_api.h` for a description of all API functions.
+
+#### ControlCAN
+
+___ControlCAN___ that provides a subset of the ZLG-CAN USB-CAN-B API (ControlCAN.DLL), enabling programs that use this API to interface with SLCAN devices.
+
+ZLG-CAN
 
 #### can_moni
 
@@ -205,7 +211,7 @@ A generic documentation of the CAN API V3 application programming interface can 
 ### SLCAN Documentation
 
 The documentation of the SLCAN protocol can be found on [Lawicel CANUSB](https://www.canusb.com/products/canusb) product page.
-For the CANable 2.0 adaptation, see the [CANable Firmware](https://github.com/normaldotcom/canable-fw) documentation on GitHub. 
+For the CANable 2.0 adaptation, see the [CANable Firmware](https://github.com/normaldotcom/canable-fw) documentation on GitHub.
 
 ### Dual-License
 
@@ -227,7 +233,3 @@ All other company, product and service names mentioned herein may be trademarks,
 
 _If you connect your CAN device to a real CAN network when using this library, you might damage your application._
 
-### Contact
-
-E-Mail: mailto://info@mac.can.com \
-Internet: https://www.mac-can.net

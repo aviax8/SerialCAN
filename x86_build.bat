@@ -1,11 +1,14 @@
 @echo off
+setlocal ENABLEDELAYEDEXPANSION
+
+set "ALLARGS=%*"
 
 set VCVARS="True"
 set TRIAL="True"
 set LIBDB="True"
 set UTILS="True"
 
-rem parse arguments: [NOVARS] [NOTRIAL] [NODEBUG] [NOUTILS]
+rem parse arguments: [NOVARS] [NOTRIAL] [NODEBUG] [NOUTILS] [NOCONTROLCAN]
 :LOOP
 if "%1" == "NOVARS" set VCVARS="False"
 if "%1" == "NOTRIAL" set TRIAL="False"
@@ -26,7 +29,7 @@ rem generate a pseudo build number
 call build_no.bat
 
 rem build the trial program
-if %TRIAL% == "True" ( 
+if %TRIAL% == "True" (
    call msbuild.exe .\Trial\slc_test.vcxproj /t:Clean;Build /p:"Configuration=Debug";"Platform=Win32"
    if errorlevel 1 goto end
 )
@@ -86,6 +89,7 @@ if %LIBDB% == "True" (
    copy /Y .\Libraries\SerialCAN\Debug_lib\uvSerialCAN.idb %BIN%
    echo "Static debug libraries (x86)" > %BIN%\readme.txt
 )
+
 rem build the utilities 'can_moni' and 'can_test'
 if %UTILS% == "True" (
    call msbuild.exe .\Utilities\can_moni\can_moni.vcxproj /t:Clean;Build /p:"Configuration=Release";"Platform=Win32"
@@ -103,6 +107,7 @@ if %UTILS% == "True" (
    copy /Y .\Utilities\can_moni\Release\can_moni.exe %BIN%
    copy /Y .\Utilities\can_test\Release\can_test.exe %BIN%
 )
+
 rem copy the header files into the Includes folder
 echo Copying header files...
 set INC=.\Includes
@@ -116,9 +121,14 @@ copy /Y .\Sources\CANAPI\CANBTR_Defaults.h %INC%
 copy /Y .\Sources\CANAPI\can_api.h %INC%
 copy /Y .\Sources\CANAPI\can_btr.h %INC%
 
+rem build the library 'ControlCAN'
+call x86_build-ControlCAN.bat %ALLARGS%
+
 rem end of the job
 :end
 popd
 if %VCVARS% == "True" (
    pause
 )
+
+endlocal

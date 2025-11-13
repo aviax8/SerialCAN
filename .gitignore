@@ -22,6 +22,15 @@ Libraries/CANAPI/uvcanslc
 Libraries/CANAPI/*.sln
 Libraries/CANAPI/*.aps
 Libraries/CANAPI/*.vcxproj.user
+Libraries/ControlCAN/.vs
+Libraries/ControlCAN/ControlCAN
+Libraries/ControlCAN/x64
+Libraries/ControlCAN/x86
+Libraries/ControlCAN/Debug*
+Libraries/ControlCAN/Release*
+Libraries/ControlCAN/*.sln
+Libraries/ControlCAN/*.aps
+Libraries/ControlCAN/*.vcxproj.user
 Libraries/SerialCAN/.objects
 Libraries/SerialCAN/*.dylib
 Libraries/SerialCAN/*.so.*

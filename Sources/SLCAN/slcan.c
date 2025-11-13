@@ -845,7 +845,7 @@ EXPORT
 int slcan_version_number(slcan_port_t port, uint8_t *hardware, uint8_t *software) {
     slcan_t *slcan = (slcan_t*)port;
     uint8_t request[2] = {'V','\r'};
-    uint8_t response[6];
+    uint8_t response[50];
     int nbytes;
     int res = -1;
 
@@ -858,7 +858,7 @@ int slcan_version_number(slcan_port_t port, uint8_t *hardware, uint8_t *software
     /* send command 'Get Version number of both CANUSB hardware and software' */
     if (slcan->ack) {
         /* Lawicel SLCAN protocol (with ACK/NACK feaadback) */
-        nbytes = send_command(slcan, request, 2, response, 6, RESPONSE_TIMEOUT);
+        nbytes = send_command(slcan, request, 2, response, sizeof(response), RESPONSE_TIMEOUT);
         if ((nbytes == 6) && (response[0] == 'V') && (response[5] == '\r')) {
             if (hardware) {
                 *hardware = (uint8_t)(CHR2BCD(response[1]) << 4);
@@ -868,6 +868,12 @@ int slcan_version_number(slcan_port_t port, uint8_t *hardware, uint8_t *software
                 *software = (uint8_t)(CHR2BCD(response[3]) << 4);
                 *software |= (uint8_t)CHR2BCD(response[4]);
             }
+            res = 0;
+        }
+        else if (nbytes >= 5 && memcmp(response, "WeAct", 5) == 0) {
+            /* WeAct USBCAN */
+            hardware = 0x00U;
+            software = 0x00U;
             res = 0;
         }
         else if (nbytes >= 0) {
