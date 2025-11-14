@@ -449,6 +449,28 @@ SLCANAPI int slcan_read_message(slcan_port_t port, slcan_message_t *message, uin
 SLCANAPI int slcan_status_flags(slcan_port_t port, slcan_flags_t *flags);
 
 
+/** @brief       read failure flags (WeAct protocol).
+ *
+ *  @remarks     This command is only active if the CAN channel is open.
+ *
+ *  @param[in]   port   - pointer to a SLCAN instance
+ *  @param[out]  flags  - channel failure flags
+ *
+ *  @returns     0 if successful, or a negative value on error.
+ *
+ *  @note        System variable 'errno' will be set in case of an error.
+ *
+ *  @retval      ENODEV    - no such device (invalid port instance)
+ *  @retval      EBADF     - bad file descriptor (device not connected)
+ *  @retval      EBUSY     - device / resource busy (disturbance)
+ *  @retval      EBADMSG   - bad message (format or disturbance)
+ *  @retval      ETIMEDOUT - timed out (command not acknowledged)
+ *  @retval      'errno'   - error code from called system functions:
+ *                           'write', 'read', etc.
+ */
+SLCANAPI int slcan_failure_flags(slcan_port_t port, slcan_flags_t *flags);
+
+
 /** @brief       sets Acceptance Code Register (ACn Register of SJA1000).
  *
  *  @remarks     This command is only active if the CAN channel is initiated

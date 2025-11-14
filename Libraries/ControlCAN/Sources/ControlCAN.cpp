@@ -163,6 +163,9 @@ static int           g_canHandle  = CANAPI_HANDLE;
 // Last used bitrate (for potential restart in ClearBuffer)
 static can_bitrate_t g_lastBitrate{};
 
+// SLCAN device serial protocol
+static uint8_t       g_slcanProtocol = CANSIO_WEACT;
+
 // Indicates that can_start has been called
 static bool          g_canStarted = false;
 
@@ -255,7 +258,7 @@ DWORD __stdcall VCI_OpenDevice(DWORD DeviceType, DWORD DeviceInd, DWORD Reserved
 
     can_sio_param_t param{};
     param.name          = const_cast<char*>(port.c_str());
-    param.attr.protocol = CANSIO_CANABLE;
+    param.attr.protocol = g_slcanProtocol;
     param.attr.baudrate = CANSIO_BD57600;   // typical SLCAN UART speed (WeAct cangaroo sets CANSIO_BD1000000)
     param.attr.bytesize = CANSIO_8DATABITS;
     param.attr.parity   = CANSIO_NOPARITY;
@@ -418,9 +421,10 @@ DWORD __stdcall VCI_Transmit(DWORD DeviceType, DWORD DeviceInd, DWORD CANInd,
         ConvertToCANAPI(frames[i], msg);
 
         int r;
+        int retries = 0;
         do {
             r = can_write(g_canHandle, &msg, 0);
-        } while (r == CANERR_TX_BUSY);
+        } while (r == CANERR_TX_BUSY && ++retries <= 4);
 
         if (r < CANERR_NOERROR) {
             Log("  can_write failed at frame %lu, r=%d", i, r);
@@ -452,7 +456,7 @@ DWORD __stdcall VCI_Receive(DWORD DeviceType, DWORD DeviceInd, DWORD CANInd,
 
     for (DWORD i = 0; i < maxCount; ++i) {
         can_message_t msg{};
-        const uint16_t timeout =
+        const uint16_t timeout = // [msec]
             (waitTime < 0) ? CANWAIT_INFINITE :
             (waitTime == 0) ? 0U :
             static_cast<uint16_t>(waitTime);
@@ -488,18 +492,17 @@ DWORD __stdcall VCI_ClearBuffer(DWORD DeviceType, DWORD DeviceInd, DWORD CANInd)
     if (g_canHandle < 0)
         return STATUS_ERR;
 
-    const int r1 = can_reset(g_canHandle);
-    Log("  can_reset(handle=%d) -> %d", g_canHandle, r1);
-
-    int r2 = 0;
     if (g_canStarted) {
-        r2 = can_start(g_canHandle, &g_lastBitrate);
+        const int r1 = can_reset(g_canHandle);
+        Log("  can_reset(handle=%d) -> %d", g_canHandle, r1);
+
+        const int r2 = can_start(g_canHandle, &g_lastBitrate);
         Log("  can_start(handle=%d, index=%d) -> %d",
             g_canHandle, g_lastBitrate.index, r2);
-    }
 
-    if ((r1 < 0 && r1 != CANERR_OFFLINE) || r2 < 0)
-        return STATUS_ERR;
+        if (r1 < 0 || r2 < 0)
+            return STATUS_ERR;
+    }
 
     return STATUS_OK;
 }
@@ -576,11 +579,16 @@ DWORD __stdcall VCI_ReadErrInfo(DWORD DeviceType, DWORD DeviceInd, DWORD CANInd,
     std::memset(out, 0, sizeof(VCI_ERR_INFO));
 
     uint8_t status = 0;
-    const int r = can_status(g_canHandle, &status);
-    Log("  can_status(handle=%d) -> %d, status=0x%02X", g_canHandle, r, status);
+    if (g_slcanProtocol != CANSIO_CANABLE && g_slcanProtocol != CANSIO_WEACT) {
+        const int r = can_status(g_canHandle, &status);
+        Log("  can_status(handle=%d) -> %d, status=0x%02X", g_canHandle, r, status);
 
-    if (r < 0)
-        return STATUS_ERR;
+        if (r < 0)
+            return STATUS_ERR;
+    }
+    else {
+        Log("  can_status not supported for the protocol, returning 0");
+    }
 
 #ifdef CANSTAT_BUSOFF
     if (status & CANSTAT_BUSOFF)
@@ -644,11 +652,16 @@ DWORD __stdcall VCI_ReadCANStatus(DWORD DeviceType, DWORD DeviceInd, DWORD CANIn
     std::memset(status, 0, sizeof(VCI_CAN_STATUS));
 
     uint8_t st = 0;
-    const int r = can_status(g_canHandle, &st);
-    Log("  can_status(handle=%d) -> %d, status=0x%02X", g_canHandle, r, st);
+    if (g_slcanProtocol != CANSIO_CANABLE && g_slcanProtocol != CANSIO_WEACT) {
+        const int r = can_status(g_canHandle, &st);
+        Log("  can_status(handle=%d) -> %d, status=0x%02X", g_canHandle, r, st);
 
-    if (r < 0)
-        return STATUS_ERR;
+        if (r < 0)
+            return STATUS_ERR;
+    }
+    else {
+        Log("  can_status not supported for the protocol, returning 0");
+    }
 
     status->regStatus = st;
     return STATUS_OK;
