@@ -343,7 +343,7 @@ int SOptions::ScanCommanline(int argc, const char* argv[], FILE* err, FILE* out)
             break;
 #endif
 #if (SERIAL_CAN_SUPPORTED != 0)
-        /* option '--protocol=(Lawicel|CANable)' (-z) */
+        /* option '--protocol=(Lawicel|CANable|WeAct)' (-z) */
         case PROTOCOL_STR:
         case PROTOCOL_CHR:
             if ((optProtocol++)) {
@@ -358,6 +358,8 @@ int SOptions::ScanCommanline(int argc, const char* argv[], FILE* err, FILE* out)
                 m_u8Protocol = CANSIO_LAWICEL;
             else if (!strcasecmp(optarg, "CANABLE"))
                 m_u8Protocol = CANSIO_CANABLE;
+            else if (!strcasecmp(optarg, "WeAct"))
+                m_u8Protocol = CANSIO_WEACT;
             else {
                 fprintf(err, "%s: illegal argument for option /PROTOCOL\n", m_szBasename);
                 return 1;
@@ -1036,7 +1038,7 @@ void SOptions::ShowUsage(FILE* stream, bool args) {
     fprintf(stream, "  /BitRate:<bitrate>                  CAN bit-rate settings (as key/value list)\n");
     fprintf(stream, "  /Verbose                            show detailed bit-rate settings\n");
 #if (SERIAL_CAN_SUPPORTED != 0)
-    fprintf(stream, "  /PRotocol:(Lawicel|CANable)         select SLCAN protocol (default=Lawicel)\n");
+    fprintf(stream, "  /PRotocol:(Lawicel|CANable|WeAct)   select SLCAN protocol (default=Lawicel)\n");
 #endif
 #if (CAN_TRACE_SUPPORTED != 0)
     fprintf(stream, "  /TRaCe:(ON|OFF)                     write a trace file (default=OFF)\n");

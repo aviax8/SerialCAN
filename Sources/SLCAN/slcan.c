@@ -704,6 +704,7 @@ int slcan_status_flags(slcan_port_t port, slcan_flags_t *flags) {
         errno = ENODEV;
         return -1;
     }
+
     /* send command 'Read Status Flags' */
     if (slcan->ack) {
         /* Lawicel SLCAN protocol (with ACK/NACK feaadback) */
@@ -738,6 +739,59 @@ int slcan_status_flags(slcan_port_t port, slcan_flags_t *flags) {
 #endif
     }
     SLCAN_DEBUG_INFO("slcan_status_flags (%i)\n", res);
+    return res;
+}
+
+EXPORT
+int slcan_failure_flags(slcan_port_t port, slcan_flags_t *flags) {
+    slcan_t *slcan = (slcan_t*)port;
+    uint8_t request[2] = {'E','\r'};
+    uint8_t response[4];
+    int nbytes;
+    int res = -1;
+
+    /* sanity check */
+    errno = 0;
+    if (!slcan || !slcan->port) {
+        errno = ENODEV;
+        return -1;
+    }
+
+    /* send command 'Read Failure Flags' */
+    if (slcan->ack) {
+        /*  SLCAN protocol (with ACK/NACK feedback) */
+        nbytes = send_command(slcan, request, 2, response, 4, RESPONSE_TIMEOUT);
+        /* does not work for WeAct - no response returned */
+        if ((nbytes == 4) && (response[0] == 'E') && (response[3] == '\r')) {
+            if (flags) {
+                flags->byte = (uint8_t)(CHR2BCD(response[1]) << 4);
+                flags->byte |= (uint8_t)CHR2BCD(response[2]);
+            }
+            res = 0;
+        }
+        else if (nbytes >= 0) {
+            /* note: Variable 'errno' is set by the called functions according
+             *       to their result. On error they return a negative value.
+             *       Receiving a wrong number of bytes will be interpreted as
+             *       protocol error (EBADMSG).
+             */
+            errno = EBADMSG;
+            res = -1;
+        }
+    } else {
+        /* note: This command is not supported by the CANable SLCAN protocol.
+         *       A protocol error (EBADMSG) will be returned in this case.
+         */
+#if (OPTION_SLCAN_FAKE_COMMANDS != 0)
+        if (flags)
+            flags->byte = 0x00U;
+        res = 0;
+#else
+        errno = EBADMSG;
+        res = -1;
+#endif
+    }
+    SLCAN_DEBUG_INFO("slcan_failure_flags (%i)\n", res);
     return res;
 }
 

@@ -98,6 +98,7 @@ extern "C" {
  *  @{ */
 #define CANSIO_LAWICEL           0x00U  /**< Lawicel SLCAN protocol */
 #define CANSIO_CANABLE           0x01U  /**< CANable SLCAN protocol */
+#define CANSIO_WEACT             0x08U  /**< WeAct SLCAN protocol (CANable + ACK) */
 #define CANSIO_AUTO              0xFFU  /**< auto detect (not realized yet) */
 #define CANSIO_SLCAN    CANSIO_LAWICEL  /**< Lawicel SLCAN protocol (default) */
  /** @} */
@@ -119,7 +120,7 @@ extern "C" {
 #define CANSIO_BD2000000      2000000U  /**< 2.000 MBd */
 #define CANSIO_BD2500000      2500000U  /**< 2.500 MBd */
 #define CANSIO_BD3000000      3000000U  /**< 3.000 MBd */
-/** @} */                   
+/** @} */
 
 /** @name  Data size option
  *  @brief Number of data bits (5, 6, 7, 8)

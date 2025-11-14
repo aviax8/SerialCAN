@@ -248,6 +248,7 @@ int can_test(int32_t channel, uint8_t mode, const void *param, int *result)
     switch (((can_sio_param_t*)param)->attr.protocol) {
     case CANSIO_LAWICEL: break;         //   Lawicel SLCAN protocol
     case CANSIO_CANABLE: break;         //   CANable SLCAN protocol
+    case CANSIO_WEACT:   break;         //   WeAct SLCAN protocol
     default:                            //   sorry, not supported
         rc = CANERR_ILLPARA;
         goto end_test;
@@ -323,6 +324,7 @@ int can_init(int32_t channel, uint8_t mode, const void *param)
     switch (((can_sio_param_t*)param)->attr.protocol) {
     case CANSIO_LAWICEL: break;         //   Lawicel SLCAN protocol
     case CANSIO_CANABLE: break;         //   CANable SLCAN protocol
+    case CANSIO_WEACT:   break;         //   WeAct SLCAN protocol
     default:                            //   sorry, not supported
         rc = CANERR_ILLPARA;
         goto err_init;
@@ -485,7 +487,7 @@ int can_start(int handle, const can_bitrate_t *bitrate)
 
     // note: CANable devices do not support SJA1000 bit-rate settings
     //
-    if ((bitrate->index > 0) && (can[handle].attr.protocol == CANSIO_CANABLE)) {
+    if ((bitrate->index > 0) && (can[handle].attr.protocol == CANSIO_CANABLE || can[handle].attr.protocol == CANSIO_WEACT)) {
         // convert bit-rate settings to index (SJA1000)
         if(btr_bitrate2index(bitrate, &temporary.index) != CANERR_NOERROR)
             return CANERR_BAUDRATE;
@@ -515,7 +517,7 @@ int can_start(int handle, const can_bitrate_t *bitrate)
     if (rc < 0)
         return slcan_error(rc);
     // set acceptance filter (code and mask)
-    if (can[handle].attr.protocol != CANSIO_CANABLE) {
+    if (can[handle].attr.protocol != CANSIO_CANABLE && can[handle].attr.protocol != CANSIO_WEACT) {
         rc = slcan_acceptance_code(can[handle].port, can[handle].filter.sja1000.code);
         if (rc < 0)
             return slcan_error(rc);
@@ -674,7 +676,17 @@ int can_status(int handle, uint8_t *status)
 
     if (!can[handle].status.can_stopped) { // if running get bus status
         // get status-register from device (CAN API V1 compatible)
-        if ((rc = slcan_status_flags(can[handle].port, &flags)) < 0)
+        switch (can[handle].attr.protocol) {
+          case CANSIO_WEACT:
+                rc = slcan_failure_flags(can[handle].port, &flags);
+                break;
+          case CANSIO_LAWICEL:
+          case CANSIO_CANABLE:
+          default:
+                rc = slcan_status_flags(can[handle].port, &flags);
+                break;
+        }
+        if (rc < 0)
             return slcan_error(rc);
         // TODO: SJA1000 datasheet, rtfm!
         can[handle].status.message_lost = (flags.DOI | flags.RxFIFO | flags.TxFIFO) ? 1 : 0;
@@ -814,7 +826,8 @@ char *can_firmware(int handle)
     snprintf(firmware, CANPROP_MAX_BUFFER_SIZE, "Firmware %u.%u (%s SLCAN protocol)",
         (uint8_t)(sw_version >> 4), (uint8_t)(sw_version & 0xFU),
         can[handle].attr.protocol == CANSIO_LAWICEL ? "Lawicel" :
-        can[handle].attr.protocol == CANSIO_CANABLE ? "CANable" : "?");
+        can[handle].attr.protocol == CANSIO_CANABLE ? "CANable" :
+        can[handle].attr.protocol == CANSIO_WEACT   ? "WeAct"   : "?");
     firmware[CANPROP_MAX_BUFFER_SIZE] = '\0';
     return (char*)firmware;
 }
