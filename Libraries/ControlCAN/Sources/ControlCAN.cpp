@@ -1,6 +1,6 @@
 // ControlCAN.cpp
 // Wrapper for ZLG ControlCAN.dll -> CAN API V3 (SerialCAN)
-// C++20, no WinAPI (only std C/C++), unbuffered logging, clean style.
+// C++20, no WinAPI (only std C/C++), unbuffered logging.
 // Exported API matches exactly the ZLG ControlCAN interface.
 //
 // Implemented functions:
