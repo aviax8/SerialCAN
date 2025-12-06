@@ -1,4 +1,4 @@
-// logging.cpp
+// logging.h
 // Logging functions for ControlCAN
 // C++20
 // ---------------------------------------------------------------------------

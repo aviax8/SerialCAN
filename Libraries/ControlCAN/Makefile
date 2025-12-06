@@ -70,6 +70,7 @@ WRAPPER_DIR = $(HOME_DIR)/Sources/Wrapper
 CONTROLCAN_DIR = $(HOME_DIR)/Libraries/ControlCAN/Sources
 
 OBJECTS = $(OUTDIR)/ControlCAN.o \
+          $(OUTDIR)/CANReplay.o \
           $(OUTDIR)/logging.o
 
 DEFINES = -DOPTION_CAN_2_0_ONLY=0 \
@@ -223,6 +224,9 @@ endif
 
 
 $(OUTDIR)/ControlCAN.o: $(WRAPPER_DIR)/ControlCAN.cpp
+	$(CC) $(CFLAGS) -MMD -MF $*.d -o $@ -c $<
+
+$(OUTDIR)/CANReplay.o: $(WRAPPER_DIR)/CANReplay.cpp
 	$(CC) $(CFLAGS) -MMD -MF $*.d -o $@ -c $<
 
 $(OUTDIR)/logging.o: $(WRAPPER_DIR)/logging.cpp

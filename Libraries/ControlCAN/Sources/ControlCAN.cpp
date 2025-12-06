@@ -46,6 +46,7 @@
 #include "SerialCAN_Defines.h"
 
 #include "logging.h"
+#include "CANReplay.h"
 
 // -----------------------------------------------------------------------------
 // Environment variables
@@ -53,6 +54,9 @@
 
 static constexpr const char* ENV_CONTROLCAN_LOG {"CONTROLCAN_LOG"};
 static constexpr const char* ENV_SLCAN_PORT     {"CONTROLCAN_SLCAN_PORT"};
+// Define CONTROLCAN_REPLAY_FILE env variable to simulate receving CAN frames (which are read from the file)
+static constexpr const char* ENV_REPLAY_FILE    {"CONTROLCAN_REPLAY_FILE"};
+
 
 // -----------------------------------------------------------------------------
 // CAN globals
@@ -147,7 +151,14 @@ DWORD __stdcall VCI_OpenDevice(DWORD DeviceType, DWORD DeviceInd, DWORD Reserved
     (void)Reserved;
 
     InitLog(ENV_CONTROLCAN_LOG);
+    InitReceiveReplay(ENV_REPLAY_FILE);
+
     Log("VCI_OpenDevice: DeviceType=%lu  DeviceIndex=%lu  CANInd=%lu", DeviceType, DeviceInd);
+
+    if (IsReceiveReplayActive()) {
+        Log("  Ignored. Replay is active.");
+        return STATUS_OK;
+    }
 
     if (g_canHandle >= 0) {
         Log("  Device already open, handle=%d", g_canHandle);
@@ -193,6 +204,11 @@ DWORD __stdcall VCI_CloseDevice(DWORD DeviceType, DWORD DeviceInd)
 {
     Log("VCI_CloseDevice: DeviceType=%lu  DeviceIndex=%lu", DeviceType, DeviceInd);
 
+    if (IsReceiveReplayActive()) {
+        Log("  Ignored. Replay is active.");
+        return STATUS_OK;
+    }
+
     if (g_canHandle >= 0) {
         const int r = can_exit(g_canHandle);
         Log("  can_exit(handle=%d) -> %d", g_canHandle, r);
@@ -220,6 +236,11 @@ DWORD __stdcall VCI_InitCAN(DWORD DeviceType, DWORD DeviceInd, DWORD CANInd,
 
     Log("VCI_InitCAN: DeviceType=%lu  DeviceIndex=%lu  CANInd=%lu  AccCode=0x%08lX  AccMask=0x%08lX  Filter=%u  Timing0=0x%02X  Timing1=0x%02X  Mode=%u",
         DeviceType, DeviceInd, CANInd, cfg->AccCode, cfg->AccMask, cfg->Filter, cfg->Timing0, cfg->Timing1, cfg->Mode);
+
+    if (IsReceiveReplayActive()) {
+        Log("  Ignored. Replay is active.");
+        return STATUS_OK;
+    }
 
     // Build SJA1000 BTR register from Timing0/1
     const uint16_t btr0btr1 =
@@ -261,6 +282,11 @@ DWORD __stdcall VCI_StartCAN(DWORD DeviceType, DWORD DeviceInd, DWORD CANInd)
 {
     Log("VCI_StartCAN: DeviceType=%lu  DeviceIndex=%lu  CANInd=%lu", DeviceType, DeviceInd, CANInd);
 
+    if (IsReceiveReplayActive()) {
+        Log("  Ignored. Replay is active.");
+        return STATUS_OK;
+    }
+
     if (g_canHandle < 0) {
         Log("  No CAN handle (device not open)");
         return STATUS_ERR;
@@ -287,6 +313,11 @@ DWORD __stdcall VCI_ResetCAN(DWORD DeviceType, DWORD DeviceInd, DWORD CANInd)
 {
     Log("VCI_ResetCAN: DeviceType=%lu  DeviceIndex=%lu  CANInd=%lu", DeviceType, DeviceInd, CANInd);
 
+    if (IsReceiveReplayActive()) {
+        Log("  Ignored. Replay is active.");
+        return STATUS_OK;
+    }
+
     if (g_canHandle < 0)
         return STATUS_ERR;
 
@@ -309,6 +340,11 @@ DWORD __stdcall VCI_Transmit(DWORD DeviceType, DWORD DeviceInd, DWORD CANInd,
                              PVCI_CAN_OBJ frames, DWORD count)
 {
     Log("VCI_Transmit: DeviceType=%lu  DeviceIndex=%lu  CANInd=%lu  sending %lu frame(s)", DeviceType, DeviceInd, CANInd, count);
+
+    if (IsReceiveReplayActive()) {
+        Log("  Ignored. Replay is active.");
+        return STATUS_OK;
+    }
 
     if (g_canHandle < 0 || !frames || count == 0)
         return 0;
@@ -348,9 +384,12 @@ DWORD __stdcall VCI_Receive(DWORD DeviceType, DWORD DeviceInd, DWORD CANInd,
 {
     Log("VCI_Receive: DeviceType=%lu  DeviceIndex=%lu  CANInd=%lu  request %lu frame(s), waitTime=%d", DeviceType, DeviceInd, CANInd, maxCount, waitTime);
 
+    if (IsReceiveReplayActive()) {
+        return VCI_ReceiveReplay(DeviceType, DeviceInd, CANInd, out, maxCount, waitTime);
+    }
+
     if (g_canHandle < 0 || !out || maxCount == 0)
         return 0;
-
 
     DWORD received = 0;
     std::lock_guard lock(g_rxMutex);
@@ -390,6 +429,11 @@ DWORD __stdcall VCI_ClearBuffer(DWORD DeviceType, DWORD DeviceInd, DWORD CANInd)
 {
     Log("VCI_ClearBuffer: DeviceType=%lu  DeviceIndex=%lu  CANInd=%lu", DeviceType, DeviceInd, CANInd);
 
+    if (IsReceiveReplayActive()) {
+        Log("  Ignored. Replay is active.");
+        return STATUS_OK;
+    }
+
     if (g_canHandle < 0)
         return STATUS_ERR;
 
@@ -420,6 +464,11 @@ DWORD __stdcall VCI_SetReference(DWORD DeviceType, DWORD DeviceInd, DWORD CANInd
 {
     Log("VCI_SetReference: DeviceType=%lu  DeviceIndex=%lu  CANInd=%lu  RefType=%lu", DeviceType, DeviceInd, CANInd, RefType);
 
+    if (IsReceiveReplayActive()) {
+        Log("  Ignored. Replay is active.");
+        return STATUS_OK;
+    }
+
     if (g_canHandle < 0 || !data)
         return STATUS_ERR;
 
@@ -448,6 +497,11 @@ DWORD __stdcall VCI_GetReference(DWORD DeviceType, DWORD DeviceInd, DWORD CANInd
 {
     Log("VCI_GetReference: DeviceType=%lu  DeviceIndex=%lu  CANInd=%lu  RefType=%lu", DeviceType, DeviceInd, CANInd, RefType);
 
+    if (IsReceiveReplayActive()) {
+        Log("  Ignored. Replay is active.");
+        return STATUS_OK;
+    }
+
     if (g_canHandle < 0 || !data)
         return STATUS_ERR;
 
@@ -473,6 +527,11 @@ DWORD __stdcall VCI_ReadErrInfo(DWORD DeviceType, DWORD DeviceInd, DWORD CANInd,
                                 PVCI_ERR_INFO out)
 {
     Log("VCI_ReadErrInfo: DeviceType=%lu  DeviceIndex=%lu  CANInd=%lu", DeviceType, DeviceInd, CANInd);
+
+    if (IsReceiveReplayActive()) {
+        Log("  Ignored. Replay is active.");
+        return STATUS_OK;
+    }
 
     if (g_canHandle < 0 || !out)
         return STATUS_ERR;
@@ -516,6 +575,11 @@ DWORD __stdcall VCI_ReadBoardInfo(DWORD DeviceType, DWORD DeviceInd,
 {
     Log("VCI_ReadBoardInfo: DeviceType=%lu  DeviceIndex=%lu", DeviceType, DeviceInd);
 
+    if (IsReceiveReplayActive()) {
+        Log("  Ignored. Replay is active.");
+        return STATUS_OK;
+    }
+
     if (g_canHandle < 0 || !info)
         return STATUS_ERR;
 
@@ -546,6 +610,11 @@ DWORD __stdcall VCI_ReadCANStatus(DWORD DeviceType, DWORD DeviceInd, DWORD CANIn
                                   PVCI_CAN_STATUS status)
 {
     Log("VCI_ReadCANStatus: DeviceType=%lu  DeviceIndex=%lu  CANInd=%lu", DeviceType, DeviceInd, CANInd);
+
+    if (IsReceiveReplayActive()) {
+        Log("  Ignored. Replay is active.");
+        return STATUS_OK;
+    }
 
     if (g_canHandle < 0 || !status)
         return STATUS_ERR;
@@ -578,6 +647,11 @@ __declspec(dllexport)
 DWORD __stdcall VCI_GetReceiveNum(DWORD DeviceType, DWORD DeviceInd, DWORD CANInd)
 {
     Log("VCI_GetReceiveNum: DeviceType=%lu  DeviceIndex=%lu  CANInd=%lu", DeviceType, DeviceInd, CANInd);
+
+    if (IsReceiveReplayActive()) {
+        Log("  Ignored. Replay is active.");
+        return STATUS_OK;
+    }
 
     if (g_canHandle < 0)
         return 0;

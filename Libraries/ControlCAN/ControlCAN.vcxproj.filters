@@ -27,6 +27,9 @@
     <ClInclude Include="Sources\ControlCAN.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="Sources\CANReplay.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="Sources\logging.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -39,6 +42,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="Sources\ControlCAN.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Sources\CANReplay.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="Sources\logging.cpp">
