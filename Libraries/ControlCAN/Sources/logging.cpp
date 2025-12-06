@@ -1,299 +1,130 @@
-// ControlCAN.cpp
-// Wrapper ControlCAN.dll → CAN API V3 (SerialCAN.dll)
-// C++20, Windows, all comments in English
+// logging.cpp
+// Logging functions for ControlCAN
+// C++20
+// ---------------------------------------------------------------------------
 
-#include <windows.h>
-#include <cstdlib>
-#include <cstdint>
+#ifdef _MSC_VER
+#ifndef _CRT_SECURE_NO_WARNINGS
+#define _CRT_SECURE_NO_WARNINGS 1
+#endif
+#endif
+
+#include <chrono>
+#include <cstdarg>
+#include <cstdio>
 #include <cstring>
-#include <string>
+#include <cstdlib>
 #include <mutex>
+#include <string>
+#include <format>
 
-#include "ControlCAN.h"
-#include "can_api.h"       // from CAN API V3
-#include "CANAPI_Types.h"  // CAN message types
+#include "logging.h"
 
 // ---------------------------------------------------------------------------
 // Globals
 // ---------------------------------------------------------------------------
 
-// CAN interface handle from CAN API V3
-static int g_canHandle = CANAPI_HANDLE;
-
-// SerialCAN.dll module handle
-static HMODULE g_hSerialCanDll = nullptr;
-
-// Mutex for receive operations
-static std::mutex g_rxMutex;
-
-// Cached COM port string (from environment variable)
-static std::string g_comPort;
+static std::FILE* g_logFile   = nullptr;
+static bool       g_logEnabled = false;
+static std::mutex g_logMutex;
 
 // ---------------------------------------------------------------------------
-// Helper: load SerialCAN.dll dynamically
+// Helpers
 // ---------------------------------------------------------------------------
 
-static bool LoadSerialCanDll()
+static std::string FormatTimestamp()
 {
-    if (g_hSerialCanDll)
-        return true;
+    using namespace std::chrono;
 
-    g_hSerialCanDll = LoadLibraryA("SerialCAN.dll");
+    const auto now = system_clock::now();
+    const auto ms  = duration_cast<milliseconds>(now.time_since_epoch()) % 1000;
 
-    return (g_hSerialCanDll != nullptr);
+    const std::time_t t = system_clock::to_time_t(now);
+    std::tm tm{};
+
+#if defined(_WIN32)
+    localtime_s(&tm, &t);
+#else
+    localtime_r(&t, &tm);
+#endif
+
+    return std::format(
+        "{:02}:{:02}:{:02}.{:03}",
+        tm.tm_hour,
+        tm.tm_min,
+        tm.tm_sec,
+        static_cast<int>(ms.count())
+    );
 }
 
 // ---------------------------------------------------------------------------
-// Helper: fetch COM port from environment variable SLCAN_PORT
+// Implementation
 // ---------------------------------------------------------------------------
 
-static bool FetchComPort()
+void Log(const char* fmt, ...)
 {
-    char* env = nullptr;
-    size_t len = 0;
+    if (!g_logEnabled || !g_logFile)
+        return;
 
-    if (_dupenv_s(&env, &len, "SLCAN_PORT") == 0 && env != nullptr)
-    {
-        g_comPort = env;
-        free(env);
-    }
-    else
-    {
-        // default fallback (optional)
-        g_comPort = "COM1";
-    }
+    std::lock_guard lock(g_logMutex);
 
-    return true;
+    std::fprintf(g_logFile, "%s  ", FormatTimestamp().c_str());
+
+    va_list args;
+    va_start(args, fmt);
+    std::vfprintf(g_logFile, fmt, args);
+    va_end(args);
+
+    std::fprintf(g_logFile, "\n");
+    std::fflush(g_logFile);
 }
 
-// ---------------------------------------------------------------------------
-// Helper: convert VCI_CAN_OBJ → can_message_t
-// ---------------------------------------------------------------------------
-
-static void ConvertToCANAPI(const VCI_CAN_OBJ& in, can_message_t& out)
+void InitLog(const char* controlCanLogFileEnvName)
 {
-    memset(&out, 0, sizeof(out));
-
-    out.id = in.ID;
-    out.xtd = (in.ExternFlag != 0);
-    out.rtr = (in.RemoteFlag != 0);
-    out.len = in.DataLen;
-
-    memcpy(out.data, in.Data, in.DataLen);
-}
-
-// ---------------------------------------------------------------------------
-// Helper: convert can_message_t → VCI_CAN_OBJ
-// ---------------------------------------------------------------------------
-
-static void ConvertFromCANAPI(const can_message_t& in, VCI_CAN_OBJ& out)
-{
-    memset(&out, 0, sizeof(out));
-
-    out.ID = in.id;
-    out.ExternFlag = in.xtd ? 1 : 0;
-    out.RemoteFlag = in.rtr ? 1 : 0;
-    out.DataLen    = in.len;
-
-    memcpy(out.Data, in.data, in.len);
-}
-
-// ---------------------------------------------------------------------------
-// VCI_OpenDevice
-// ---------------------------------------------------------------------------
-
-extern "C" __declspec(dllexport)
-DWORD __stdcall VCI_OpenDevice(DWORD DeviceType, DWORD DeviceInd, DWORD Reserved)
-{
-    // Load SerialCAN.dll dynamically
-    if (!LoadSerialCanDll())
-        return STATUS_ERR;
-
-    // Fetch COM port from environment variable
-    FetchComPort();
-
-    // Prepare CAN API param structure
-    can_sio_attr_t sio{};
-    sio.device = g_comPort.c_str();
-    sio.baud = 115200;   // typical for SLCAN adapters
-    sio.mode = CANMODE_DEFAULT;
-
-    // Initialize channel: library = SERIALCAN_LIBRARY_ID, channel=0
-    int result = can_init(SERIALCAN_LIBRARY_ID, 0, CANMODE_DEFAULT, &sio);
-    if (result < 0)
-        return STATUS_ERR;
-
-    g_canHandle = result;
-    return STATUS_OK;
-}
-
-// ---------------------------------------------------------------------------
-// VCI_CloseDevice
-// ---------------------------------------------------------------------------
-
-extern "C" __declspec(dllexport)
-DWORD __stdcall VCI_CloseDevice(DWORD DeviceType, DWORD DeviceInd)
-{
-    if (g_canHandle >= 0)
-    {
-        can_exit(g_canHandle);
-        g_canHandle = CANAPI_HANDLE;
+    if (g_logEnabled) {
+        return;
     }
 
-    if (g_hSerialCanDll)
-    {
-        FreeLibrary(g_hSerialCanDll);
-        g_hSerialCanDll = nullptr;
+    const char* env = std::getenv(controlCanLogFileEnvName);
+    if (!env || std::strcmp(env, "1") != 0) {
+        g_logEnabled = false;
+        return;
     }
 
-    return STATUS_OK;
-}
-
-// ---------------------------------------------------------------------------
-// VCI_InitCAN → do nothing special (bitrate setup happens in VCI_StartCAN)
-// ---------------------------------------------------------------------------
-
-extern "C" __declspec(dllexport)
-DWORD __stdcall VCI_InitCAN(DWORD DeviceType, DWORD DeviceInd, DWORD CANInd, PVCI_INIT_CONFIG pInitConfig)
-{
-    // We only prepare bitrate in VCI_StartCAN.
-    return STATUS_OK;
-}
-
-// ---------------------------------------------------------------------------
-// VCI_StartCAN → can_start()
-// ---------------------------------------------------------------------------
-
-extern "C" __declspec(dllexport)
-DWORD __stdcall VCI_StartCAN(DWORD DeviceType, DWORD DeviceInd, DWORD CANInd)
-{
-    if (g_canHandle < 0)
-        return STATUS_ERR;
-
-    // CAN bitrate: 500 kbit/s default (just an example)
-    can_bitrate_t bitrate{};
-    bitrate.type = CANBTR_INDEX;
-    bitrate.index = 6; // 500k in CANBTR_Defaults.h
-
-    if (can_start(g_canHandle, &bitrate) < 0)
-        return STATUS_ERR;
-
-    return STATUS_OK;
-}
-
-// ---------------------------------------------------------------------------
-// VCI_Transmit → can_write()
-// ---------------------------------------------------------------------------
-
-extern "C" __declspec(dllexport)
-ULONG __stdcall VCI_Transmit(DWORD DeviceType, DWORD DeviceInd, DWORD CANInd,
-                             PVCI_CAN_OBJ pSend, ULONG Len)
-{
-    if (g_canHandle < 0 || !pSend)
-        return 0;
-
-    ULONG sent = 0;
-
-    for (ULONG i = 0; i < Len; ++i)
-    {
-        can_message_t msg{};
-        ConvertToCANAPI(pSend[i], msg);
-
-        if (can_write(g_canHandle, &msg, 0) == 0)
-            ++sent;
-        else
-            break;
+    g_logFile = std::fopen("ControlCAN.log", "w");
+    if (!g_logFile) {
+        g_logEnabled = false;
+        return;
     }
 
-    return sent;
+    // Disable stdio buffering for the log file (unbuffered logging)
+    setvbuf(g_logFile, nullptr, _IONBF, 0);
+    g_logEnabled = true;
+
+    Log("Logging enabled");
 }
 
-// ---------------------------------------------------------------------------
-// VCI_Receive → can_read()
-// ---------------------------------------------------------------------------
-
-extern "C" __declspec(dllexport)
-ULONG __stdcall VCI_Receive(DWORD DeviceType, DWORD DeviceInd, DWORD CANInd,
-                            PVCI_CAN_OBJ pReceive, ULONG Len, INT WaitTime)
+void LogCANFrame(const char* prefix, const VCI_CAN_OBJ& f)
 {
-    if (g_canHandle < 0 || !pReceive || Len == 0)
-        return 0;
+    if (!g_logEnabled || !g_logFile)
+        return;
 
-    std::lock_guard lock(g_rxMutex);
+    std::lock_guard lock(g_logMutex);
 
-    ULONG count = 0;
+    std::fprintf(
+        g_logFile,
+        "%s  %s ID=0x%08X %s %s DLC=%u DATA:",
+        FormatTimestamp().c_str(),
+        prefix,
+        f.ID,
+        f.ExternFlag ? "EXT" : "STD",
+        f.RemoteFlag ? "RTR" : "DATA",
+        f.DataLen
+    );
 
-    for (ULONG i = 0; i < Len; ++i)
-    {
-        can_message_t msg{};
+    for (unsigned i = 0; i < f.DataLen && i < 8; ++i)
+        std::fprintf(g_logFile, " %02X", f.Data[i]);
 
-        uint16_t timeout =
-            (WaitTime < 0) ? CANWAIT_INFINITE :
-            (WaitTime == 0) ? 0 :
-            (uint16_t)WaitTime;
-
-        int r = can_read(g_canHandle, &msg, timeout);
-        if (r < 0)
-            break;
-
-        ConvertFromCANAPI(msg, pReceive[count]);
-        ++count;
-    }
-
-    return count;
+    std::fprintf(g_logFile, "\n");
+    std::fflush(g_logFile);
 }
-
-// ---------------------------------------------------------------------------
-// VCI_ClearBuffer → can_reset() (resets controller, clears queues)
-// ---------------------------------------------------------------------------
-
-extern "C" __declspec(dllexport)
-DWORD __stdcall VCI_ClearBuffer(DWORD DeviceType, DWORD DeviceInd, DWORD CANInd)
-{
-    if (g_canHandle < 0)
-        return STATUS_ERR;
-
-    can_reset(g_canHandle);
-    return STATUS_OK;
-}
-
-// ---------------------------------------------------------------------------
-// VCI_SetReference → can_property()
-// ---------------------------------------------------------------------------
-
-extern "C" __declspec(dllexport)
-DWORD __stdcall VCI_SetReference(DWORD DeviceType, DWORD DeviceInd, DWORD CANInd,
-                                 DWORD RefType, PVOID pData)
-{
-    if (g_canHandle < 0)
-        return STATUS_ERR;
-
-    // Size is unknown → assume 4 bytes unless user wants otherwise
-    int r = can_property(g_canHandle, (uint16_t)RefType, pData, 4);
-    return (r < 0) ? STATUS_ERR : STATUS_OK;
-}
-
-// ---------------------------------------------------------------------------
-// VCI_ReadErrInfo → queries status via can_status()
-// ---------------------------------------------------------------------------
-
-extern "C" __declspec(dllexport)
-DWORD __stdcall VCI_ReadErrInfo(DWORD DeviceType, DWORD DeviceInd, DWORD CANInd,
-                                PVCI_ERR_INFO pErrInfo)
-{
-    if (g_canHandle < 0 || !pErrInfo)
-        return STATUS_ERR;
-
-    uint8_t st = 0;
-    if (can_status(g_canHandle, &st) < 0)
-        return STATUS_ERR;
-
-    memset(pErrInfo, 0, sizeof(VCI_ERR_INFO));
-
-    // Map basic errors
-    if (st & CANSTAT_BUSOFF)  pErrInfo->ErrCode |= ERR_CAN_BUSOFF;
-    if (st & CANSTAT_ERRLIM)  pErrInfo->ErrCode |= ERR_CAN_PASSIVE;
-
-    return STATUS_OK;
-}
-

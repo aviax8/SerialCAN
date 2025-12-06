@@ -26,14 +26,14 @@
 #endif
 #endif
 
-#include <chrono>
-#include <cstdarg>
+//#include <chrono>
+//#include <cstdarg>
 #include <cstdio>
 #include <cstring>
 #include <cstdlib>
 #include <mutex>
 #include <string>
-#include <format>
+//#include <format>
 
 // ZLG ControlCAN header
 #include "ControlCAN.h"
@@ -45,113 +45,14 @@
 #include "CANAPI_Defines.h"
 #include "SerialCAN_Defines.h"
 
+#include "logging.h"
+
 // -----------------------------------------------------------------------------
 // Environment variables
 // -----------------------------------------------------------------------------
 
 static constexpr const char* ENV_CONTROLCAN_LOG {"CONTROLCAN_LOG"};
 static constexpr const char* ENV_SLCAN_PORT     {"CONTROLCAN_SLCAN_PORT"};
-
-// -----------------------------------------------------------------------------
-// Logging system
-// -----------------------------------------------------------------------------
-
-static std::FILE* g_logFile   = nullptr;
-static bool       g_logEnabled = false;
-static std::mutex g_logMutex;
-
-static std::string FormatTimestamp()
-{
-    using namespace std::chrono;
-
-    const auto now = system_clock::now();
-    const auto ms  = duration_cast<milliseconds>(now.time_since_epoch()) % 1000;
-
-    const std::time_t t = system_clock::to_time_t(now);
-    std::tm tm{};
-
-#if defined(_WIN32)
-    localtime_s(&tm, &t);
-#else
-    localtime_r(&t, &tm);
-#endif
-
-    return std::format(
-        "{:02}:{:02}:{:02}.{:03}",
-        tm.tm_hour,
-        tm.tm_min,
-        tm.tm_sec,
-        static_cast<int>(ms.count())
-    );
-}
-
-static void Log(const char* fmt, ...)
-{
-    if (!g_logEnabled || !g_logFile)
-        return;
-
-    std::lock_guard lock(g_logMutex);
-
-    std::fprintf(g_logFile, "%s  ", FormatTimestamp().c_str());
-
-    va_list args;
-    va_start(args, fmt);
-    std::vfprintf(g_logFile, fmt, args);
-    va_end(args);
-
-    std::fprintf(g_logFile, "\n");
-    std::fflush(g_logFile);
-}
-
-static void InitLog()
-{
-    if (g_logEnabled) {
-        return;
-    }
-
-    const char* env = std::getenv(ENV_CONTROLCAN_LOG);
-    if (!env || std::strcmp(env, "1") != 0) {
-        g_logEnabled = false;
-        return;
-    }
-
-    g_logFile = std::fopen("ControlCAN.log", "w");
-    if (!g_logFile) {
-        g_logEnabled = false;
-        return;
-    }
-
-    // Disable stdio buffering for the log file (unbuffered logging)
-    setvbuf(g_logFile, nullptr, _IONBF, 0);
-    g_logEnabled = true;
-
-    Log("Logging enabled");
-}
-
-static void LogCANFrame(const char* prefix, const VCI_CAN_OBJ& f)
-{
-    if (!g_logEnabled || !g_logFile)
-        return;
-
-    std::lock_guard lock(g_logMutex);
-
-    std::fprintf(
-        g_logFile,
-        "%s  %s ID=0x%08X %s %s DLC=%u DATA:",
-        FormatTimestamp().c_str(),
-        prefix,
-        f.ID,
-        f.ExternFlag ? "EXT" : "STD",
-        f.RemoteFlag ? "RTR" : "DATA",
-        f.DataLen
-    );
-
-    for (unsigned i = 0; i < f.DataLen && i < 8; ++i)
-        std::fprintf(g_logFile, " %02X", f.Data[i]);
-
-    std::fprintf(g_logFile, "\n");
-    std::fflush(g_logFile);
-}
 
 // -----------------------------------------------------------------------------
 // CAN globals
@@ -245,7 +146,7 @@ DWORD __stdcall VCI_OpenDevice(DWORD DeviceType, DWORD DeviceInd, DWORD Reserved
 {
     (void)Reserved;
 
-    InitLog();
+    InitLog(ENV_CONTROLCAN_LOG);
     Log("VCI_OpenDevice: DeviceType=%lu  DeviceIndex=%lu  CANInd=%lu", DeviceType, DeviceInd);
 
     if (g_canHandle >= 0) {
